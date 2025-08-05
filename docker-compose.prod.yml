@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  # 后端服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pre-hospital-backend
+    ports:
+      - '8000:8000'
+    environment:
+      - APP_NAME=院前急救助手系统
+      - APP_VERSION=1.0.0
+      - DEBUG=false
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DATABASE_URL=sqlite:///./pre_hospital_assistant.db
+      - SECRET_KEY=${SECRET_KEY:-your-super-secret-key-change-this-in-production}
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - REFRESH_TOKEN_EXPIRE_DAYS=7
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+      - DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+      - QWEN_MODEL=qwen-plus
+      - QWEN_THINKING_MODEL=qwen-plus-2025-04-28
+      - REDIS_URL=redis://redis:6379/0
+      - UPLOAD_DIR=./uploads
+      - MAX_FILE_SIZE=10485760
+      - CORS_ORIGINS=["http://localhost", "http://your-domain.com"]
+      - LOG_LEVEL=INFO
+      - LOG_FILE=./logs/app.log
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/logs:/app/logs
+      - backend_data:/app/data
+    networks:
+      - pre-hospital-network
+    restart: unless-stopped
+    depends_on:
+      - redis
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8000/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 前端服务
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pre-hospital-frontend
+    ports:
+      - '80:80'
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+      - VITE_APP_TITLE=院前急救助手系统
+      - VITE_APP_VERSION=1.0.0
+      - VITE_USE_MOCK=false
+      - VITE_LOG_LEVEL=info
+    depends_on:
+      - backend
+    networks:
+      - pre-hospital-network
+    restart: unless-stopped
+
+  # Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: pre-hospital-redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    networks:
+      - pre-hospital-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis123}
+
+  # Nginx 反向代理（可选，用于生产环境）
+  nginx:
+    image: nginx:alpine
+    container_name: pre-hospital-nginx
+    ports:
+      - '443:443'
+      - '80:80'
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - pre-hospital-network
+    restart: unless-stopped
+
+volumes:
+  backend_data:
+  redis_data:
+
+networks:
+  pre-hospital-network:
+    driver: bridge

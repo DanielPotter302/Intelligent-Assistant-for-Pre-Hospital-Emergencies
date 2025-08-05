@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  # 后端服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pre-hospital-backend
+    ports:
+      - '8000:8000'
+    environment:
+      - DATABASE_URL=sqlite:///./pre_hospital_assistant.db
+      - SECRET_KEY=${SECRET_KEY:-your-super-secret-key-change-this-in-production}
+      - DEBUG=false
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/logs:/app/logs
+      - backend_data:/app/data
+    networks:
+      - pre-hospital-network
+    restart: unless-stopped
+    depends_on:
+      - redis
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8000/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 前端服务
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pre-hospital-frontend
+    ports:
+      - '80:80'
+    depends_on:
+      - backend
+    networks:
+      - pre-hospital-network
+    restart: unless-stopped
+
+  # Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: pre-hospital-redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    networks:
+      - pre-hospital-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+volumes:
+  backend_data:
+  redis_data:
+
+networks:
+  pre-hospital-network:
+    driver: bridge
