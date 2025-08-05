@@ -24,8 +24,8 @@
 
 - **FastAPI** - 现代、快速的Python Web框架
 - **SQLAlchemy** - Python ORM
-- **PostgreSQL** - 关系型数据库
-- **OpenAI API** - AI对话服务
+- **SQLite** - 轻量级数据库
+- **通义千问API** - AI对话服务
 - **JWT** - 用户认证
 
 ## 功能模块
@@ -66,9 +66,11 @@
 
 - Node.js 16+
 - Python 3.8+
-- PostgreSQL 12+
+- Docker (可选，用于生产部署)
 
-### 前端启动
+### 开发环境启动
+
+#### 前端启动
 
 ```bash
 # 安装依赖
@@ -81,7 +83,7 @@ npm run dev
 npm run build
 ```
 
-### 后端启动
+#### 后端启动
 
 ```bash
 # 进入后端目录
@@ -99,18 +101,43 @@ venv\Scripts\activate  # Windows
 pip install -r requirements.txt
 
 # 启动服务
-uvicorn app.main:app --reload
+python start.py
 ```
 
-### 数据库设置
+### 生产环境部署
+
+#### Docker部署（推荐）
 
 ```bash
-# 创建数据库
-createdb pre_hospital_assistant
+# 一键部署
+./deploy.sh prod
 
-# 运行迁移
-alembic upgrade head
+# 或手动部署
+docker-compose -f docker-compose.prod.yml up -d
 ```
+
+#### 传统部署
+
+1. **配置环境变量**
+
+   ```bash
+   cp env.example env.production
+   cp backend/env.example backend/.env
+   ```
+
+2. **配置API密钥**
+   - 在 `backend/.env` 中设置 `DASHSCOPE_API_KEY`
+
+3. **启动服务**
+
+   ```bash
+   # 后端
+   cd backend && python start.py
+
+   # 前端
+   npm run build
+   nginx -s reload
+   ```
 
 ## 项目结构
 
@@ -130,7 +157,8 @@ Pre_hospital_assistant_front/
 │   │   └── services/     # 业务逻辑
 │   └── requirements.txt   # Python依赖
 ├── docs/                  # 项目文档
-└── nginx/                 # Nginx配置
+├── nginx/                 # Nginx配置
+└── docker-compose.yml     # Docker配置
 ```
 
 ## API文档
@@ -140,24 +168,66 @@ Pre_hospital_assistant_front/
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
-## 部署
+## 配置说明
 
-### Docker部署
+### 环境变量
+
+#### 后端配置 (backend/.env)
 
 ```bash
-# 构建镜像
-docker-compose build
+# 应用配置
+APP_NAME=院前急救助手系统
+DEBUG=false
 
-# 启动服务
-docker-compose up -d
+# 数据库配置
+DATABASE_URL=sqlite:///./pre_hospital_assistant.db
+
+# JWT 配置
+SECRET_KEY=your-super-secret-key
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# 通义千问 API 配置
+DASHSCOPE_API_KEY=your-dashscope-api-key
+QWEN_MODEL=qwen-plus
 ```
 
-### 生产环境配置
+#### 前端配置 (env.production)
 
-1. 配置环境变量
-2. 设置数据库连接
-3. 配置Nginx反向代理
-4. 设置SSL证书
+```bash
+VITE_API_BASE_URL=http://your-domain.com:8000
+VITE_APP_TITLE=院前急救助手系统
+```
+
+## 管理命令
+
+### Docker管理
+
+```bash
+# 查看服务状态
+docker-compose -f docker-compose.prod.yml ps
+
+# 查看日志
+docker-compose -f docker-compose.prod.yml logs -f
+
+# 重启服务
+docker-compose -f docker-compose.prod.yml restart
+
+# 停止服务
+docker-compose -f docker-compose.prod.yml down
+```
+
+### 开发工具
+
+```bash
+# 代码检查
+npm run lint
+
+# 运行测试
+npm run test
+
+# 类型检查
+npm run type-check
+```
 
 ## 贡献指南
 
@@ -174,8 +244,8 @@ docker-compose up -d
 ## 联系方式
 
 - 项目维护者: Daniel Potter
-- 邮箱: [your-email@example.com]
-- 项目链接: [https://github.com/DanielPotter302/Pre_hospital_assistant_front]
+- 邮箱: danielpotter263@gmail.com
+- 项目链接: [https://github.com/DanielPotter302/Intelligent-Assistant-for-Pre-Hospital-Emergencies]
 
 ## 更新日志
 
