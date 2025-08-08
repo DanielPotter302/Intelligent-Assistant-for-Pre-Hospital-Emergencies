@@ -47,6 +47,7 @@ export interface StreamEvent {
     | 'user_message'
     | 'assistant_message'
     | 'usage'
+    | 'session_info'
   content?: string
   message_id?: string
   data?: any
@@ -280,6 +281,17 @@ export const createChatSession = (title: string = '新对话', mode: 'kb' | 'gra
 // 删除会话
 export const deleteChatSession = (sessionId: string) => {
   return request.delete(`/api/chat/sessions/${sessionId}`)
+}
+
+// 清空所有会话
+export const clearAllChatSessions = (mode: string = 'kb') => {
+  return request.delete('/api/chat/sessions', { params: { mode } })
+}
+
+// 批量删除会话
+export const deleteChatSessions = async (sessionIds: string[]) => {
+  const promises = sessionIds.map((id) => deleteChatSession(id))
+  return Promise.all(promises)
 }
 
 // 语音识别

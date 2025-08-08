@@ -20,6 +20,8 @@
         @toggle-right-sidebar="toggleRightSidebar"
         @highlight-reference="handleHighlightReference"
         @update-references="handleUpdateReferences"
+        @session-created="handleSessionCreated"
+        @session-updated="handleSessionUpdated"
       />
 
       <!-- 右侧参考栏 -->
@@ -64,6 +66,18 @@ const handleHighlightReference = (refId: string) => {
 const handleUpdateReferences = (refs: Array<{ id: string; title: string; content: string }>) => {
   // 更新右侧栏的参考资料
   rightSidebarRef.value?.updateReferences(refs)
+}
+
+const handleSessionCreated = (sessionId: string) => {
+  // 更新当前会话ID
+  currentSessionId.value = sessionId
+  // 通知左侧边栏刷新会话列表
+  leftSidebarRef.value?.refreshChatHistory()
+}
+
+const handleSessionUpdated = () => {
+  // 通知左侧边栏刷新会话列表
+  leftSidebarRef.value?.refreshChatHistory()
 }
 
 // 初始化页面时自动创建会话

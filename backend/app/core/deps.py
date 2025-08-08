@@ -51,3 +51,6 @@ def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
             detail="Not enough permissions"
         )
     return current_user 
+
+# 别名，为了兼容性
+require_admin = get_admin_user 

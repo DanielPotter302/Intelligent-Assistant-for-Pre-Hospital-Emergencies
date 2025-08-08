@@ -328,26 +328,50 @@ function handleConfirmAction() {
 }
 
 async function deleteChat(chatId: string) {
-  showConfirm('删除会话', '确定要删除这个会话吗？此操作无法撤销。', () => {
-    chatHistory.value = chatHistory.value.filter((chat) => chat.id !== chatId)
-    if (currentChatId.value === chatId) {
-      const nextChat = chatHistory.value[0]
-      if (nextChat) {
-        currentChatId.value = nextChat.id
-        emit('select-chat', nextChat.id)
-      } else {
-        currentChatId.value = ''
-        emit('select-chat', '')
+  showConfirm('删除会话', '确定要删除这个会话吗？此操作无法撤销。', async () => {
+    try {
+      // 调用后端API删除会话
+      await chatApi.deleteChatSession(chatId)
+
+      // 从前端列表中移除
+      chatHistory.value = chatHistory.value.filter((chat) => chat.id !== chatId)
+
+      // 如果删除的是当前会话，切换到其他会话或清空
+      if (currentChatId.value === chatId) {
+        const nextChat = chatHistory.value[0]
+        if (nextChat) {
+          currentChatId.value = nextChat.id
+          emit('select-chat', nextChat.id)
+        } else {
+          currentChatId.value = ''
+          emit('select-chat', '')
+        }
       }
+
+      console.log('会话删除成功')
+    } catch (error) {
+      console.error('删除会话失败:', error)
+      // 可以在这里添加用户友好的错误提示
     }
   })
 }
 
 function clearHistory() {
-  showConfirm('清空历史记录', '确定要清空所有会话记录吗？此操作无法撤销。', () => {
-    chatHistory.value = []
-    currentChatId.value = ''
-    showHistoryMenu.value = false
+  showConfirm('清空历史记录', '确定要清空所有会话记录吗？此操作无法撤销。', async () => {
+    try {
+      // 调用后端API清空所有会话
+      await chatApi.clearAllChatSessions(props.modelValue)
+
+      // 清空前端数据
+      chatHistory.value = []
+      currentChatId.value = ''
+      showHistoryMenu.value = false
+
+      console.log('所有会话记录已清空')
+    } catch (error) {
+      console.error('清空会话记录失败:', error)
+      // 可以在这里添加用户友好的错误提示
+    }
   })
 }
 
@@ -379,20 +403,36 @@ function deleteSelectedChats() {
   showConfirm(
     '删除选中会话',
     `确定要删除选中的 ${selectedChats.value.length} 个会话吗？此操作无法撤销。`,
-    () => {
-      chatHistory.value = chatHistory.value.filter((chat) => !selectedChats.value.includes(chat.id))
-      if (selectedChats.value.includes(currentChatId.value)) {
-        const nextChat = chatHistory.value[0]
-        if (nextChat) {
-          currentChatId.value = nextChat.id
-          emit('select-chat', nextChat.id)
-        } else {
-          currentChatId.value = ''
-          emit('select-chat', '')
+    async () => {
+      try {
+        // 调用后端API批量删除会话
+        await chatApi.deleteChatSessions(selectedChats.value)
+
+        // 从前端列表中移除已删除的会话
+        chatHistory.value = chatHistory.value.filter(
+          (chat) => !selectedChats.value.includes(chat.id),
+        )
+
+        // 如果当前选中的会话被删除，切换到其他会话
+        if (selectedChats.value.includes(currentChatId.value)) {
+          const nextChat = chatHistory.value[0]
+          if (nextChat) {
+            currentChatId.value = nextChat.id
+            emit('select-chat', nextChat.id)
+          } else {
+            currentChatId.value = ''
+            emit('select-chat', '')
+          }
         }
+
+        selectedChats.value = []
+        isEditMode.value = false
+
+        console.log('选中的会话已删除')
+      } catch (error) {
+        console.error('删除选中会话失败:', error)
+        // 可以在这里添加用户友好的错误提示
       }
-      selectedChats.value = []
-      isEditMode.value = false
     },
   )
 }
@@ -460,6 +500,11 @@ watch(
     await loadChatHistory()
   },
 )
+
+// 暴露方法给父组件
+defineExpose({
+  refreshChatHistory: loadChatHistory,
+})
 </script>
 
 <style scoped>

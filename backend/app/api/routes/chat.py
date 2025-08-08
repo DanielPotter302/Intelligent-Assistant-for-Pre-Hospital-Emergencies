@@ -178,13 +178,23 @@ async def send_message_stream(
         reasoning_content = ""
         
         try:
+            # 发送会话信息（用于前端同步）
+            session_info = {
+                'id': session.id,
+                'title': session.title,
+                'mode': session.mode,
+                'created_at': session.created_at.isoformat(),
+                'updated_at': session.updated_at.isoformat()
+            }
+            yield f"data: {json.dumps({'type': 'session_info', 'data': session_info})}\n\n"
+            
             # 发送用户消息确认
             user_msg_data = ChatMessageResponse.from_orm(user_message).dict()
             user_msg_data['created_at'] = user_message.created_at.isoformat()
             yield f"data: {json.dumps({'type': 'user_message', 'data': user_msg_data})}\n\n"
             
             # 获取AI流式响应
-            async for chunk in ai_service.chat_completion_stream(
+            async for chunk in ai_service.stream_chat_completion(
                 ai_messages, 
                 mode=session.mode,
                 temperature=0.7,
@@ -198,7 +208,7 @@ async def send_message_stream(
                     full_content += chunk["content"]
                     yield f"data: {json.dumps(chunk)}\n\n"
                 elif chunk["type"] == "done":
-                    full_content = chunk["content"]
+                    # 不要覆盖累积的内容，使用已经累积的full_content
                     reasoning_content = chunk.get("reasoning", "")
                     
                     # 保存AI响应到数据库
@@ -206,7 +216,7 @@ async def send_message_stream(
                         id=assistant_message_id,
                         session_id=session_id,
                         role="assistant",
-                        content=full_content
+                        content=full_content  # 使用累积的完整内容
                     )
                     
                     db.add(assistant_message)
@@ -298,7 +308,41 @@ async def delete_chat_session(
             detail="Chat session not found"
         )
     
+    # 先删除相关的消息
+    messages = db.query(ChatMessage).filter(ChatMessage.session_id == session_id).all()
+    for message in messages:
+        db.delete(message)
+    
+    # 再删除会话
     db.delete(session)
     db.commit()
     
-    return ApiResponse(message="Chat session deleted successfully") 
+    return ApiResponse(message="Chat session deleted successfully")
+
+@router.delete("/sessions", response_model=ApiResponse)
+async def clear_all_chat_sessions(
+    mode: str = "kb",  # 添加模式参数，只清空指定模式的会话
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """清空用户的所有聊天会话"""
+    # 获取用户在指定模式下的所有会话
+    sessions = db.query(ChatSession).filter(
+        ChatSession.user_id == current_user.id,
+        ChatSession.mode == mode
+    ).all()
+    
+    deleted_count = 0
+    for session in sessions:
+        # 先删除相关的消息
+        messages = db.query(ChatMessage).filter(ChatMessage.session_id == session.id).all()
+        for message in messages:
+            db.delete(message)
+        
+        # 再删除会话
+        db.delete(session)
+        deleted_count += 1
+    
+    db.commit()
+    
+    return ApiResponse(message=f"Successfully cleared {deleted_count} chat sessions") 

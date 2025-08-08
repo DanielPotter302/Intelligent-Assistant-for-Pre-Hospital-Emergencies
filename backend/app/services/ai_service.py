@@ -3,78 +3,171 @@ import os
 import json
 import asyncio
 from app.core.config import settings
+from app.core.database import SessionLocal
+from app.models.llm_config import LLMConfig
 
 class AIService:
     def __init__(self):
-        # 使用配置中的API密钥
-        self.api_key = settings.dashscope_api_key
-        self.base_url = settings.openai_base_url
-        self.has_api = bool(self.api_key)
+        # 默认配置（作为后备）
+        self.default_api_key = settings.dashscope_api_key
+        self.default_base_url = settings.openai_base_url
+        self.default_model = settings.kb_model
         
-        # 模型配置
-        self.kb_model = settings.kb_model  # 知识库检索模型
-        self.complex_model = settings.complex_model  # 复杂问答模型
+        # 缓存配置
+        self._config_cache = {}
+        self._cache_timestamp = 0
+        self._cache_ttl = 300  # 5分钟缓存
     
-    async def chat_completion_stream(
+    def _get_module_config(self, module_name: str) -> Dict[str, Any]:
+        """获取模块的LLM配置"""
+        import time
+        current_time = time.time()
+        
+        # 检查缓存是否过期
+        if current_time - self._cache_timestamp > self._cache_ttl:
+            print(f"Config cache expired, refreshing...")
+            self._refresh_config_cache()
+        
+        print(f"Getting config for module: {module_name}")
+        print(f"Available modules in cache: {list(self._config_cache.keys())}")
+        
+        # 从缓存获取配置
+        if module_name in self._config_cache:
+            config = self._config_cache[module_name]
+            print(f"Found config for {module_name}: API key exists = {bool(config.get('api_key'))}")
+            return config
+        
+        # 如果没有找到配置，返回默认配置
+        print(f"No config found for {module_name}, using default config")
+        return {
+            "api_key": self.default_api_key,
+            "base_url": self.default_base_url,
+            "model_name": self.default_model,
+            "temperature": "0.7",
+            "max_tokens": "2000",
+            "is_enabled": True
+        }
+    
+    def _refresh_config_cache(self):
+        """刷新配置缓存"""
+        import time
+        db = SessionLocal()
+        try:
+            configs = db.query(LLMConfig).filter(LLMConfig.is_enabled == True).all()
+            self._config_cache = {}
+            print(f"Loading {len(configs)} LLM configs from database...")
+            for config in configs:
+                self._config_cache[config.module_name] = {
+                    "api_key": config.api_key,
+                    "base_url": config.base_url,
+                    "model_name": config.model_name,
+                    "temperature": config.temperature,
+                    "max_tokens": config.max_tokens,
+                    "is_enabled": config.is_enabled,
+                    "enable_thinking": config.enable_thinking # 新增思考功能配置
+                }
+                print(f"Loaded config for module: {config.module_name}")
+            self._cache_timestamp = time.time()
+            print(f"Config cache refreshed with {len(self._config_cache)} modules")
+        except Exception as e:
+            print(f"Failed to refresh LLM config cache: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            db.close()
+    
+    async def stream_chat_completion(
         self, 
         messages: List[Dict[str, str]], 
         mode: str = "kb",
-        temperature: float = 0.7,
-        max_tokens: int = 2000
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """流式聊天完成 - 使用OpenAI兼容模式
         
         支持的模式：
-        - kb: 知识库检索（不开启思考）
-        - graph: 复杂问答（开启思考）
-        - triage: 智能分诊（不开启思考）
-        - emergency: 应急指导（不开启思考）
+        - kb: 知识库检索（对应chat_kb模块）
+        - graph: 复杂问答（对应chat_graph模块）
+        - triage: 智能分诊（对应triage模块）
+        - emergency: 应急指导（对应emergency_*模块）
         """
-        if not self.has_api:
-            # 如果没有配置API密钥，返回模拟流式响应
+        # 根据模式映射到配置模块名称
+        module_mapping = {
+            "kb": "chat_kb",
+            "graph": "chat_graph", 
+            "triage": "triage",
+            "emergency": "emergency_cpr"  # 默认使用CPR配置，可以根据具体场景调整
+        }
+        
+        module_name = module_mapping.get(mode, "chat_kb")
+        config = self._get_module_config(module_name)
+        
+        # 检查配置是否启用
+        if not config.get("is_enabled", True):
+            async for chunk in self._mock_stream_response(messages[-1]["content"], mode):
+                yield chunk
+            return
+        
+        # 检查API密钥
+        api_key = config.get("api_key")
+        if not api_key:
             async for chunk in self._mock_stream_response(messages[-1]["content"], mode):
                 yield chunk
             return
         
         try:
-            # 导入OpenAI SDK
-            from openai import OpenAI
+            # 导入异步OpenAI SDK
+            from openai import AsyncOpenAI
             
-            # 创建OpenAI客户端
-            client = OpenAI(
-                api_key=self.api_key,
-                base_url=self.base_url,
+            # 创建客户端
+            client = AsyncOpenAI(
+                api_key=api_key,
+                base_url=config.get("base_url", "https://dashscope.aliyuncs.com/compatible-mode/v1")
             )
             
-            # 选择模型和配置
-            # 只有复杂问答模式开启思考功能
-            model = self.complex_model if mode == "graph" else self.kb_model
-            enable_thinking = mode == "graph"  # 只有复杂问答模式开启思考
+            # 处理消息格式
+            processed_messages = []
+            for msg in messages:
+                processed_messages.append({
+                    "role": msg["role"],
+                    "content": msg["content"]
+                })
             
-            # 根据模式调整消息内容
-            processed_messages = self._process_messages_for_mode(messages, mode)
+            # 获取配置参数
+            model = config.get("model_name", "qwen-plus")
+            if temperature is None:
+                temperature = float(config.get("temperature", "0.7"))
+            if max_tokens is None:
+                max_tokens = int(config.get("max_tokens", "2000"))
             
             # 构建请求参数
             request_params = {
                 "model": model,
                 "messages": processed_messages,
-                "stream": True,
+                "stream": True,  # 强制启用流式输出
                 "temperature": temperature,
                 "max_tokens": max_tokens,
             }
             
-            # 如果是复杂问答模式，开启思考
-            if enable_thinking:
-                request_params["extra_body"] = {"enable_thinking": True}
+            # 检查是否启用思考功能（从数据库配置中读取）
+            enable_thinking = config.get("enable_thinking", False)
+            if enable_thinking and "qwen" in model.lower():
+                # 根据阿里云文档，通过extra_body配置思考功能
+                request_params["extra_body"] = {
+                    "enable_thinking": True,
+                    "thinking_budget": 30000  # 思考过程的最大长度
+                }
+                print(f"启用思考模式 for model: {model}, module: {module_name}, extra_body: {request_params['extra_body']}")
             
             # 调用OpenAI兼容API
-            completion = client.chat.completions.create(**request_params)
+            completion = await client.chat.completions.create(**request_params)
             
             # 处理流式响应
             full_content = ""
             thinking_content = ""
+            is_thinking = False
             
-            for chunk in completion:
+            async for chunk in completion:
                 # 解析chunk数据
                 chunk_dict = chunk.model_dump() if hasattr(chunk, 'model_dump') else chunk
                 
@@ -82,25 +175,27 @@ class AIService:
                     choice = chunk_dict['choices'][0]
                     delta = choice.get('delta', {})
                     
-                    # 处理思考内容（reasoning_content）
-                    if 'reasoning_content' in delta and delta['reasoning_content'] and enable_thinking:
-                        reasoning_text = delta['reasoning_content']
-                        thinking_content += reasoning_text
+                    # 处理思考过程（Qwen3特有）
+                    if 'reasoning_content' in delta and delta['reasoning_content']:
+                        thinking_content += delta['reasoning_content']
+                        is_thinking = True
                         yield {
                             "type": "thinking",
-                            "content": reasoning_text
+                            "content": delta['reasoning_content']
                         }
+                        continue
                     
                     # 处理回复内容
                     if 'content' in delta and delta['content']:
                         content = delta['content']
                         
-                        # 如果是第一次输出内容，发送开始信号
-                        if not full_content:
+                        # 如果刚从思考模式切换到回答模式，或者是第一次输出内容
+                        if (is_thinking and not full_content) or (not full_content and not is_thinking):
                             yield {
                                 "type": "answer_start",
                                 "content": ""
                             }
+                            is_thinking = False
                         
                         full_content += content
                         yield {
@@ -110,33 +205,18 @@ class AIService:
                     
                     # 检查是否完成
                     finish_reason = choice.get('finish_reason')
-                    if finish_reason == "stop":
+                    if finish_reason:
                         yield {
                             "type": "done",
-                            "content": full_content,
-                            "reasoning": thinking_content if enable_thinking else None
+                            "content": full_content,  # 返回完整内容而不是空字符串
+                            "thinking_enabled": enable_thinking,
+                            "thinking_content_length": len(thinking_content) if thinking_content else 0
                         }
                         break
-                
-                # 处理使用情况信息
-                if 'usage' in chunk_dict and chunk_dict['usage']:
-                    yield {
-                        "type": "usage",
-                        "data": chunk_dict['usage']
-                    }
             
-        except ImportError:
-            print("OpenAI SDK未安装，使用模拟响应")
-            async for chunk in self._mock_stream_response(messages[-1]["content"], mode):
-                yield chunk
         except Exception as e:
-            print(f"OpenAI API调用错误: {e}")
-            # 如果API调用失败，返回错误信息
-            yield {
-                "type": "error",
-                "message": f"API调用失败: {str(e)}"
-            }
-            # 然后返回模拟流式响应
+            print(f"AI服务调用失败: {e}")
+            # 发生错误时返回模拟响应
             async for chunk in self._mock_stream_response(messages[-1]["content"], mode):
                 yield chunk
     
@@ -144,12 +224,12 @@ class AIService:
         self, 
         messages: List[Dict[str, str]], 
         mode: str = "kb",
-        temperature: float = 0.7,
-        max_tokens: int = 2000
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None
     ) -> str:
         """非流式聊天完成（用于兼容性）"""
         full_response = ""
-        async for chunk in self.chat_completion_stream(messages, mode, temperature, max_tokens):
+        async for chunk in self.stream_chat_completion(messages, mode, temperature, max_tokens):
             if chunk["type"] == "answer":
                 full_response += chunk["content"]
             elif chunk["type"] == "done":
@@ -162,16 +242,6 @@ class AIService:
         
         # 生成模拟响应内容
         mock_content = self._generate_mock_content(user_message)
-        
-        # 模拟思考过程（仅在复杂问答模式下）
-        if mode == "graph":
-            thinking_text = "正在分析您的问题，考虑相关的医疗知识和急救流程..."
-            for char in thinking_text:
-                yield {
-                    "type": "thinking",
-                    "content": char
-                }
-                await asyncio.sleep(0.02)
         
         # 发送回答开始信号
         yield {
@@ -190,8 +260,7 @@ class AIService:
         # 发送完成信号
         yield {
             "type": "done",
-            "content": mock_content,
-            "reasoning": thinking_text if mode == "graph" else None
+            "content": mock_content
         }
     
     def _process_messages_for_mode(self, messages: List[Dict[str, str]], mode: str) -> List[Dict[str, str]]:

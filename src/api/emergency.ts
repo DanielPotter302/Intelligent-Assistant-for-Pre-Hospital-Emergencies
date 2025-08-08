@@ -12,7 +12,7 @@ import type {
 
 // 重新导出类型以保持向后兼容
 export interface EmergencyMessage {
-  id: number
+  id: string | number
   role: 'user' | 'assistant'
   content: string
   steps?: string[]
@@ -35,6 +35,23 @@ export interface EmergencySession {
   lastMessage: string
   createdAt: string
   updatedAt: string
+}
+
+// 流式消息事件类型
+export interface EmergencyStreamEvent {
+  type:
+    | 'thinking'
+    | 'answer_start'
+    | 'answer'
+    | 'done'
+    | 'error'
+    | 'user_message'
+    | 'assistant_message'
+    | 'usage'
+  content?: string
+  message_id?: string
+  data?: any
+  message?: string
 }
 
 // 创建紧急会话
@@ -66,6 +83,95 @@ export async function getNearbyEquipment(params: {
 // 获取紧急场景列表
 export async function getEmergencyScenarios(): Promise<ApiResponse<EmergencyScenario[]>> {
   return request.get('/api/emergency/scenarios')
+}
+
+// 发送应急指导消息（流式）
+export const sendMessageStream = (
+  sessionId: string,
+  content: string,
+  scenario: keyof typeof emergencyScenarios,
+  onMessage: (event: EmergencyStreamEvent) => void,
+  onError?: (error: Error) => void,
+  onComplete?: () => void,
+): Promise<{ close: () => void }> => {
+  const token = localStorage.getItem('token')
+
+  return new Promise((resolve, reject) => {
+    // 发送POST请求并处理流式响应
+    fetch(
+      `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/emergency/sessions/${sessionId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ content, scenario }),
+      },
+    )
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`)
+        }
+
+        if (!response.body) {
+          throw new Error('No response body')
+        }
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+
+        const readStream = () => {
+          reader
+            .read()
+            .then(({ done, value }) => {
+              if (done) {
+                onComplete?.()
+                return
+              }
+
+              const chunk = decoder.decode(value)
+              const lines = chunk.split('\n')
+
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  try {
+                    const data: EmergencyStreamEvent = JSON.parse(line.slice(6))
+                    onMessage(data)
+
+                    if (data.type === 'done' || data.type === 'error') {
+                      onComplete?.()
+                      return
+                    }
+                  } catch (error) {
+                    console.error('Failed to parse stream data:', error)
+                  }
+                }
+              }
+
+              readStream()
+            })
+            .catch((error) => {
+              console.error('Stream read error:', error)
+              onError?.(error)
+            })
+        }
+
+        readStream()
+
+        // 返回控制对象
+        const controller = {
+          close: () => reader.cancel(),
+        }
+
+        resolve(controller)
+      })
+      .catch((error) => {
+        console.error('Failed to start stream:', error)
+        onError?.(error)
+        reject(error)
+      })
+  })
 }
 
 /**
@@ -111,13 +217,13 @@ export async function getMessages(sessionId: string): Promise<EmergencyMessage[]
   const response = await request.get(`/api/emergency/sessions/${sessionId}`)
 
   // 转换后端响应格式为前端期望的格式
-  if (response.data && response.data.messages) {
-    return response.data.messages.map((msg: any) => ({
+  if (response.data && Array.isArray(response.data)) {
+    return response.data.map((msg: any) => ({
       id: msg.id,
       role: msg.role,
       content: msg.content,
       steps: msg.steps,
-      createdAt: msg.created_at,
+      createdAt: msg.created_at || msg.createdAt,
     }))
   }
 
@@ -136,7 +242,7 @@ export async function getSessions(): Promise<EmergencySession[]> {
       id: session.id,
       title: session.title,
       scenario: session.scenario_type,
-      lastMessage: '',
+      lastMessage: session.last_message || '',
       createdAt: session.created_at,
       updatedAt: session.updated_at,
     }))
@@ -166,13 +272,20 @@ export async function createSession(
       id: sessionData.id,
       title: sessionData.title,
       scenario: sessionData.scenario_type,
-      lastMessage: '',
+      lastMessage: sessionData.last_message || '',
       createdAt: sessionData.created_at,
       updatedAt: sessionData.updated_at,
     }
   }
 
   throw new Error('Invalid response format')
+}
+
+/**
+ * 删除会话
+ */
+export async function deleteSession(sessionId: string): Promise<void> {
+  await request.delete(`/api/emergency/sessions/${sessionId}`)
 }
 
 /**

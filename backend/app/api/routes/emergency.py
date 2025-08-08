@@ -145,7 +145,21 @@ async def get_emergency_sessions(
         EmergencySession.user_id == current_user.id
     ).order_by(EmergencySession.updated_at.desc()).all()
     
-    session_data = [EmergencySessionResponse.from_orm(session) for session in sessions]
+    # 添加最后一条消息信息
+    session_data = []
+    for session in sessions:
+        # 获取最后一条用户消息作为预览
+        last_message = db.query(EmergencyMessage).filter(
+            EmergencyMessage.session_id == session.id,
+            EmergencyMessage.role == "user"
+        ).order_by(EmergencyMessage.created_at.desc()).first()
+        
+        session_dict = EmergencySessionResponse.from_orm(session).dict()
+        # 手动处理 datetime 序列化
+        session_dict['created_at'] = session.created_at.isoformat()
+        session_dict['updated_at'] = session.updated_at.isoformat()
+        session_dict["last_message"] = last_message.content if last_message else ""
+        session_data.append(session_dict)
     
     return ApiResponse(
         message="Emergency sessions retrieved successfully",
@@ -171,20 +185,7 @@ async def create_emergency_session(
     db.commit()
     db.refresh(session)
     
-    # 创建初始指导消息
-    scenario = EMERGENCY_SCENARIOS.get(session_data.scenario_type)
-    if scenario:
-        initial_message = EmergencyMessage(
-            id=generate_session_id(),
-            session_id=session.id,
-            role="assistant",
-            content=f"您正在处理{scenario['title']}情况。请描述具体情况，我将为您提供专业的应急指导。",
-            steps=["评估现场安全", "检查患者状态", "准备必要设备"],
-            equipment=["急救包", "氧气面罩", "除颤器"]
-        )
-        
-        db.add(initial_message)
-        db.commit()
+    # 不再自动创建初始指导消息，让用户主动开始对话
     
     return ApiResponse(
         code=201,
@@ -214,108 +215,20 @@ async def get_emergency_session(
         EmergencyMessage.session_id == session_id
     ).order_by(EmergencyMessage.created_at.asc()).all()
     
-    session_data = EmergencySessionWithMessages.from_orm(session)
-    session_data.messages = [EmergencyMessageResponse.from_orm(msg) for msg in messages]
+    # 只返回消息列表，与前端期望的格式一致
+    messages_data = []
+    for msg in messages:
+        msg_data = EmergencyMessageResponse.from_orm(msg).dict()
+        msg_data['created_at'] = msg.created_at.isoformat()
+        messages_data.append(msg_data)
     
     return ApiResponse(
         message="Emergency session retrieved successfully",
-        data=session_data
+        data=messages_data
     )
 
-@router.post("/sessions/{session_id}/messages", response_model=ApiResponse)
+@router.post("/sessions/{session_id}/messages")
 async def send_emergency_message(
-    session_id: str,
-    message_data: EmergencyMessageCreate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """发送消息到应急会话"""
-    # 验证会话存在且属于当前用户
-    session = db.query(EmergencySession).filter(
-        EmergencySession.id == session_id,
-        EmergencySession.user_id == current_user.id
-    ).first()
-    
-    if not session:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Emergency session not found"
-        )
-    
-    # 创建用户消息
-    user_message = EmergencyMessage(
-        id=generate_session_id(),
-        session_id=session_id,
-        role="user",
-        content=message_data.content
-    )
-    
-    db.add(user_message)
-    db.commit()
-    db.refresh(user_message)
-    
-    # 构建AI提示
-    scenario = EMERGENCY_SCENARIOS.get(session.scenario_type, {})
-    ai_messages = [
-        {
-            "role": "user",
-            "content": f"""当前处理的是{scenario.get('title', '紧急情况')}。用户问题：{message_data.content}"""
-        }
-    ]
-    
-    try:
-        # 使用应急指导模式
-        ai_response = await ai_service.chat_completion(ai_messages, mode="emergency", temperature=0.2)
-        
-        # 解析步骤和设备（简单实现）
-        steps = []
-        equipment = []
-        
-        lines = ai_response.split('\n')
-        for line in lines:
-            line = line.strip()
-            if line.startswith(('步骤', '1.', '2.', '3.', '4.', '5.')):
-                steps.append(line)
-            elif line.startswith(('设备', '器材', '工具')):
-                equipment.append(line)
-        
-        # 创建AI响应消息
-        assistant_message = EmergencyMessage(
-            id=generate_session_id(),
-            session_id=session_id,
-            role="assistant",
-            content=ai_response,
-            steps=steps[:5] if steps else None,
-            equipment=equipment[:5] if equipment else None
-        )
-        
-        db.add(assistant_message)
-        db.commit()
-        db.refresh(assistant_message)
-        
-        # 更新会话时间
-        session.updated_at = assistant_message.created_at
-        db.commit()
-        
-        return ApiResponse(
-            message="Emergency message sent successfully",
-            data={
-                "user_message": EmergencyMessageResponse.from_orm(user_message),
-                "assistant_message": EmergencyMessageResponse.from_orm(assistant_message)
-            }
-        )
-        
-    except Exception as e:
-        return ApiResponse(
-            message="Message sent, but AI response failed",
-            data={
-                "user_message": EmergencyMessageResponse.from_orm(user_message),
-                "error": str(e)
-            }
-        )
-
-@router.post("/sessions/{session_id}/messages/stream")
-async def send_emergency_message_stream(
     session_id: str,
     message_data: EmergencyMessageCreate,
     current_user: User = Depends(get_current_active_user),
@@ -388,7 +301,7 @@ async def send_emergency_message_stream(
                 })
             
             # 获取AI流式响应
-            async for chunk in ai_service.chat_completion_stream(
+            async for chunk in ai_service.stream_chat_completion(
                 ai_messages, 
                 mode="emergency",
                 temperature=0.2,
@@ -426,8 +339,8 @@ async def send_emergency_message_stream(
                     
                     db.add(assistant_message)
                     
-                    # 更新会话时间
-                    session.updated_at = assistant_message.created_at
+                    # 触发会话的updated_at自动更新（通过修改任意字段）
+                    session.status = session.status  # 这会触发onupdate
                     db.commit()
                     db.refresh(assistant_message)
                     
@@ -455,4 +368,27 @@ async def send_emergency_message_stream(
             "Connection": "keep-alive",
             "Content-Type": "text/event-stream"
         }
-    ) 
+    )
+
+@router.delete("/sessions/{session_id}", response_model=ApiResponse)
+async def delete_emergency_session(
+    session_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """删除应急会话"""
+    session = db.query(EmergencySession).filter(
+        EmergencySession.id == session_id,
+        EmergencySession.user_id == current_user.id
+    ).first()
+    
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Emergency session not found"
+        )
+    
+    db.delete(session)
+    db.commit()
+    
+    return ApiResponse(message="Emergency session deleted successfully") 

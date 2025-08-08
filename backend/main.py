@@ -29,7 +29,7 @@ app.add_middleware(
 )
 
 # 导入路由
-from app.api.routes import auth, chat, triage, emergency, knowledge, system, users, messages
+from app.api.routes import auth, chat, triage, emergency, knowledge, system, users, messages, llm_config
 
 # 静态文件配置
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
@@ -43,6 +43,7 @@ app.include_router(emergency.router, prefix="/api/emergency", tags=["应急指�
 app.include_router(knowledge.router, prefix="/api/knowledge", tags=["知识库"])
 app.include_router(messages.router, prefix="/api", tags=["留言管理"])
 app.include_router(system.router, prefix="/api", tags=["系统"])
+app.include_router(llm_config.router, prefix="/api/admin/llm", tags=["LLM配置管理"])
 
 # 根路径
 @app.get("/")
@@ -77,10 +78,11 @@ async def global_exception_handler(request, exc):
     )
 
 if __name__ == "__main__":
+    from app.core.config import settings
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
-        port=8000,
+        host=settings.host,
+        port=settings.port,
         reload=True,
         log_level="info"
     ) 

@@ -8,7 +8,6 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
-    AdminKnowledgeManagement: typeof import('./src/components/knowledge/AdminKnowledgeManagement.vue')['default']
     AdvantagesSection: typeof import('./src/components/home/AdvantagesSection.vue')['default']
     ChatPanel: typeof import('./src/components/chat/ChatPanel.vue')['default']
     CommonSymptoms: typeof import('./src/components/triage/CommonSymptoms.vue')['default']
@@ -34,12 +33,11 @@ declare module 'vue' {
     ElOption: typeof import('element-plus/es')['ElOption']
     ElPagination: typeof import('element-plus/es')['ElPagination']
     ElProgress: typeof import('element-plus/es')['ElProgress']
-    ElRadioButton: typeof import('element-plus/es')['ElRadioButton']
-    ElRadioGroup: typeof import('element-plus/es')['ElRadioGroup']
     ElSelect: typeof import('element-plus/es')['ElSelect']
     ElSlider: typeof import('element-plus/es')['ElSlider']
     ElStep: typeof import('element-plus/es')['ElStep']
     ElSteps: typeof import('element-plus/es')['ElSteps']
+    ElSwitch: typeof import('element-plus/es')['ElSwitch']
     ElTable: typeof import('element-plus/es')['ElTable']
     ElTableColumn: typeof import('element-plus/es')['ElTableColumn']
     ElTabPane: typeof import('element-plus/es')['ElTabPane']
@@ -55,7 +53,9 @@ declare module 'vue' {
     HeroSection: typeof import('./src/components/home/HeroSection.vue')['default']
     KnowledgeManager: typeof import('./src/components/admin/KnowledgeManager.vue')['default']
     LeftSidebar: typeof import('./src/components/chat/LeftSidebar.vue')['default']
+    LLMConfigManager: typeof import('./src/components/admin/LLMConfigManager.vue')['default']
     LoadingDots: typeof import('./src/components/chat/LoadingDots.vue')['default']
+    MarkdownRenderer: typeof import('./src/components/chat/MarkdownRenderer.vue')['default']
     MedicalCalculators: typeof import('./src/components/triage/MedicalCalculators.vue')['default']
     MessageManager: typeof import('./src/components/admin/MessageManager.vue')['default']
     MessageTransition: typeof import('./src/components/chat/MessageTransition.vue')['default']

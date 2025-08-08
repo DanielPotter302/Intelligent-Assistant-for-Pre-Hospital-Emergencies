@@ -78,7 +78,7 @@
             </div>
             <div class="flex-1 max-w-[80%]">
               <div class="bg-white p-4 rounded-lg rounded-tl-none shadow-sm">
-                <p class="text-balance text-gray-700">{{ message.content }}</p>
+                <MarkdownRenderer :content="message.content" />
                 <div v-if="message.references?.length" class="flex flex-wrap gap-1 mt-2">
                   <span
                     v-for="(ref, index) in message.references"
@@ -183,6 +183,7 @@ import type { ChatMessage, StreamEvent } from '@/api/chat'
 import MessageTransition from './MessageTransition.vue'
 import LoadingDots from './LoadingDots.vue'
 import ErrorMessage from './ErrorMessage.vue'
+import MarkdownRenderer from './MarkdownRenderer.vue'
 
 const emit = defineEmits<{
   (e: 'toggle-left-sidebar'): void
@@ -190,6 +191,7 @@ const emit = defineEmits<{
   (e: 'highlight-reference', refId: string): void
   (e: 'update-references', refs: Array<{ id: string; title: string; content: string }>): void
   (e: 'session-created', sessionId: string): void
+  (e: 'session-updated'): void
 }>()
 
 const props = defineProps<{
@@ -387,6 +389,14 @@ async function sendMessage() {
 // 处理流式事件
 function handleStreamEvent(event: StreamEvent) {
   switch (event.type) {
+    case 'session_info':
+      // 处理会话信息，通知父组件更新会话列表
+      if (event.data) {
+        emit('session-created', event.data.id)
+        emit('session-updated')
+      }
+      break
+
     case 'thinking':
       if (props.mode === 'graph') {
         isShowingThinking.value = true
@@ -396,6 +406,7 @@ function handleStreamEvent(event: StreamEvent) {
 
     case 'answer_start':
       isShowingThinking.value = false
+      isTyping.value = false // 开始回复时隐藏"正在输入"指示器
       if (currentStreamingMessage.value) {
         currentStreamingMessage.value.id = event.message_id || currentStreamingMessage.value.id
         currentStreamingMessage.value.content = ''
@@ -414,6 +425,29 @@ function handleStreamEvent(event: StreamEvent) {
       }
       break
 
+    case 'done':
+      // 流式响应完成，确保消息已保存
+      if (currentStreamingMessage.value) {
+        // 确保消息在列表中
+        const existingIndex = messages.value.findIndex(
+          (m) => m.id === currentStreamingMessage.value?.id,
+        )
+        if (existingIndex === -1) {
+          // 如果消息不在列表中，添加它
+          messages.value.push(currentStreamingMessage.value)
+        } else {
+          // 更新现有消息的内容
+          messages.value[existingIndex] = { ...currentStreamingMessage.value }
+        }
+      }
+      // 完成后清理状态
+      isTyping.value = false
+      isShowingThinking.value = false
+      thinkingContent.value = ''
+      currentStreamingMessage.value = null
+      nextTick(() => scrollToBottom())
+      break
+
     case 'assistant_message':
       // 更新最终的助手消息
       if (event.data && currentStreamingMessage.value) {
@@ -429,6 +463,9 @@ function handleStreamEvent(event: StreamEvent) {
         const index = messages.value.findIndex((m) => m.id === currentStreamingMessage.value?.id)
         if (index !== -1) {
           messages.value[index] = finalMessage
+        } else {
+          // 如果找不到临时消息，直接添加
+          messages.value.push(finalMessage)
         }
       }
       break

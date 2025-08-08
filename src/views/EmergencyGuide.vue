@@ -28,6 +28,49 @@
                 {{ scenario.title }}
               </h3>
               <p class="text-sm text-gray-500 mt-1">{{ scenario.description }}</p>
+
+              <!-- 聊天历史记录 -->
+              <div v-if="scenarioSessions[scenario.id]?.length" class="mt-3 space-y-1" @click.stop>
+                <div class="flex items-center justify-between">
+                  <div class="text-xs text-gray-400 mb-1">历史记录</div>
+                  <button
+                    class="text-xs text-primary hover:text-primary-dark"
+                    @click="createNewSession(scenario.id as keyof typeof emergencyScenarios)"
+                  >
+                    + 新建聊天
+                  </button>
+                </div>
+                <div
+                  v-for="session in scenarioSessions[scenario.id]"
+                  :key="session.id"
+                  class="text-xs p-2 bg-gray-50 rounded hover:bg-gray-100 transition-colors group"
+                >
+                  <div class="flex items-start justify-between">
+                    <div class="flex-1 cursor-pointer" @click="loadSession(session)">
+                      <div class="font-medium text-gray-700 truncate">{{ session.title }}</div>
+                      <div class="text-gray-500 truncate">{{ session.lastMessage }}</div>
+                      <div class="text-gray-400">{{ formatTime(session.updatedAt) }}</div>
+                    </div>
+                    <button
+                      class="ml-2 opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 transition-all"
+                      @click="deleteSession(session.id)"
+                      title="删除对话"
+                    >
+                      <i class="fas fa-trash text-xs"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 新建聊天按钮（当没有历史记录时） -->
+              <div v-else-if="selectedScenario === scenario.id" class="mt-3" @click.stop>
+                <button
+                  class="text-xs text-primary hover:text-primary-dark"
+                  @click="createNewSession(scenario.id as keyof typeof emergencyScenarios)"
+                >
+                  + 新建聊天
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -65,14 +108,6 @@
             </div>
             <h3 class="text-lg font-semibold text-gray-800">{{ scenarioPrompt }}</h3>
             <p class="text-gray-500 mt-2 max-w-md mx-auto">{{ scenarioDescription }}</p>
-
-            <!-- 快速操作面板 -->
-            <div class="mt-8 max-w-md mx-auto">
-              <QuickActions
-                :scenario="selectedScenario || undefined"
-                @send-message="handleQuickAction"
-              />
-            </div>
           </div>
 
           <!-- 消息列表 -->
@@ -82,6 +117,9 @@
               <div v-if="message.role === 'user'" class="flex justify-end">
                 <div class="max-w-[80%] bg-primary text-white p-4 rounded-lg rounded-tr-none">
                   <p class="text-balance">{{ message.content }}</p>
+                  <div class="text-xs text-white/80 text-right mt-1">
+                    {{ formatMessageTime(message.createdAt) }}
+                  </div>
                 </div>
               </div>
 
@@ -92,23 +130,26 @@
                 >
                   <i class="fas fa-robot text-white"></i>
                 </div>
-                <div class="max-w-[80%] bg-white p-4 rounded-lg rounded-tl-none">
-                  <p class="text-balance text-gray-700 whitespace-pre-line">
-                    {{ message.content }}
-                  </p>
-                  <!-- 如果有操作步骤，显示为列表 -->
-                  <div v-if="message.steps?.length" class="mt-3 space-y-2">
-                    <div
-                      v-for="(step, index) in message.steps"
-                      :key="index"
-                      class="flex items-start space-x-2 p-2 rounded bg-gray-50"
-                    >
+                <div class="flex-1 max-w-[80%]">
+                  <div class="bg-white p-4 rounded-lg rounded-tl-none">
+                    <MarkdownRenderer :content="message.content" />
+                    <!-- 如果有操作步骤，显示为列表 -->
+                    <div v-if="message.steps?.length" class="mt-3 space-y-2">
                       <div
-                        class="w-6 h-6 rounded-full bg-primary/10 flex-shrink-0 flex items-center justify-center text-primary text-sm"
+                        v-for="(step, index) in message.steps"
+                        :key="index"
+                        class="flex items-start space-x-2 p-2 rounded bg-gray-50"
                       >
-                        {{ index + 1 }}
+                        <div
+                          class="w-6 h-6 rounded-full bg-primary/10 flex-shrink-0 flex items-center justify-center text-primary text-sm"
+                        >
+                          {{ index + 1 }}
+                        </div>
+                        <p class="text-sm text-gray-700">{{ step }}</p>
                       </div>
-                      <p class="text-sm text-gray-700">{{ step }}</p>
+                    </div>
+                    <div class="text-xs text-gray-400 mt-1">
+                      {{ formatMessageTime(message.createdAt) }}
                     </div>
                   </div>
                 </div>
@@ -161,8 +202,8 @@
               <button
                 v-show="messageInput"
                 type="submit"
-                class="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white shadow-md hover:bg-primary-dark transition-colors"
                 :disabled="isTyping"
+                class="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white shadow-md hover:bg-primary-dark transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
                 <i class="fas fa-paper-plane"></i>
               </button>
@@ -178,16 +219,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { SpeechRecorder, SpeechRecognizer } from '@/utils/speech'
 import * as emergencyApi from '@/api/emergency'
-import type { EmergencyMessage, EmergencySession } from '@/api/emergency'
+import type { EmergencyMessage, EmergencySession, EmergencyStreamEvent } from '@/api/emergency'
 import { emergencyScenarios, type EmergencyScenario } from '@/config/emergency'
 import ErrorMessage from '@/components/chat/ErrorMessage.vue'
 import LoadingDots from '@/components/chat/LoadingDots.vue'
-import QuickActions from '@/components/emergency/QuickActions.vue'
+import MarkdownRenderer from '@/components/chat/MarkdownRenderer.vue'
 import SafetyTips from '@/components/emergency/SafetyTips.vue'
-import SessionManager from '@/components/emergency/SessionManager.vue'
 
 // 状态
 const selectedScenario = ref<keyof typeof emergencyScenarios | null>(null)
@@ -197,6 +237,10 @@ const isTyping = ref(false)
 const isRecording = ref(false)
 const messages = ref<EmergencyMessage[]>([])
 const errorMessage = ref('')
+const scenarioSessions = ref<Record<string, EmergencySession[]>>({})
+const currentStreamingMessage = ref<EmergencyMessage | null>(null)
+const chatMessagesRef = ref<HTMLElement | null>(null)
+const textareaRef = ref<HTMLTextAreaElement | null>(null)
 
 // 语音识别相关
 const speechRecorder = new SpeechRecorder()
@@ -249,18 +293,130 @@ const showError = (message: string) => {
   }, 3000)
 }
 
+// 滚动到底部
+const scrollToBottom = () => {
+  if (chatMessagesRef.value) {
+    chatMessagesRef.value.scrollTop = chatMessagesRef.value.scrollHeight
+  }
+}
+
+// 加载所有场景的会话历史
+const loadAllSessions = async () => {
+  try {
+    const sessions = await emergencyApi.getSessions()
+    const groupedSessions: Record<string, EmergencySession[]> = {}
+
+    sessions.forEach((session) => {
+      if (!groupedSessions[session.scenario]) {
+        groupedSessions[session.scenario] = []
+      }
+      groupedSessions[session.scenario].push(session)
+    })
+
+    // 按更新时间排序
+    Object.keys(groupedSessions).forEach((scenario) => {
+      groupedSessions[scenario].sort(
+        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      )
+    })
+
+    scenarioSessions.value = groupedSessions
+  } catch (error) {
+    console.error('加载会话历史失败:', error)
+  }
+}
+
+// 加载指定会话
+const loadSession = async (session: EmergencySession) => {
+  try {
+    currentSession.value = session
+    selectedScenario.value = session.scenario as keyof typeof emergencyScenarios
+
+    // 加载会话消息
+    const sessionMessages = await emergencyApi.getMessages(session.id)
+    messages.value = sessionMessages
+
+    // 滚动到底部
+    await nextTick()
+    scrollToBottom()
+  } catch (error) {
+    console.error('加载会话失败:', error)
+    showError('加载会话失败')
+  }
+}
+
+// 删除会话
+const deleteSession = async (sessionId: string) => {
+  if (!confirm('确定要删除此对话吗？')) {
+    return
+  }
+  try {
+    await emergencyApi.deleteSession(sessionId)
+
+    // 如果删除的是当前会话，清空消息和当前会话
+    if (currentSession.value?.id === sessionId) {
+      currentSession.value = null
+      messages.value = []
+    }
+
+    // 重新加载会话历史
+    await loadAllSessions()
+
+    showError('对话已删除')
+  } catch (error) {
+    console.error('删除会话失败:', error)
+    showError('删除会话失败，请重试')
+  }
+}
+
+// 格式化时间
+const formatTime = (dateString: string): string => {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+
+  if (diff < 60 * 1000) return '刚刚'
+  if (diff < 60 * 60 * 1000) return `${Math.floor(diff / (60 * 1000))}分钟前`
+  if (diff < 24 * 60 * 60 * 1000) return `${Math.floor(diff / (60 * 60 * 1000))}小时前`
+  if (diff < 7 * 24 * 60 * 60 * 1000) return `${Math.floor(diff / (24 * 60 * 60 * 1000))}天前`
+
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
+}
+
+// 格式化消息时间
+const formatMessageTime = (dateString: string): string => {
+  return formatTime(dateString)
+}
+
 // 方法
 const selectScenario = async (scenario: keyof typeof emergencyScenarios) => {
+  selectedScenario.value = scenario
+  messages.value = [] // 清空消息历史
+  currentSession.value = null
+
+  // 不自动创建会话，让用户手动点击"新建聊天"或选择历史记录
+}
+
+const createNewSession = async (scenario: keyof typeof emergencyScenarios) => {
   try {
     selectedScenario.value = scenario
     messages.value = [] // 清空消息历史
+    currentSession.value = null
 
     // 创建新会话
     const session = await emergencyApi.createSession(scenario)
     currentSession.value = session
+
+    // 重新加载会话历史
+    await loadAllSessions()
   } catch (error) {
-    console.error('创建会话失败:', error)
-    showError('创建会话失败，请重试')
+    console.error('创建新会话失败:', error)
+    showError('创建新会话失败，请重试')
   }
 }
 
@@ -303,9 +459,125 @@ const toggleVoiceRecording = async () => {
   }
 }
 
+// 处理流式事件
+const handleStreamEvent = (event: EmergencyStreamEvent) => {
+  switch (event.type) {
+    case 'answer_start':
+      isTyping.value = false
+      if (currentStreamingMessage.value) {
+        currentStreamingMessage.value.id = event.message_id || currentStreamingMessage.value.id
+        currentStreamingMessage.value.content = ''
+        // 添加到消息列表中开始显示
+        if (!messages.value.find((m) => m.id === currentStreamingMessage.value?.id)) {
+          messages.value.push(currentStreamingMessage.value)
+        }
+      }
+      break
+
+    case 'answer':
+      if (currentStreamingMessage.value) {
+        currentStreamingMessage.value.content += event.content || ''
+        // 滚动到底部
+        nextTick(() => scrollToBottom())
+      }
+      break
+
+    case 'done':
+      // 流式响应完成，确保消息已保存
+      if (currentStreamingMessage.value) {
+        // 确保消息在列表中
+        const existingIndex = messages.value.findIndex(
+          (m) => m.id === currentStreamingMessage.value?.id,
+        )
+        if (existingIndex === -1) {
+          // 如果消息不在列表中，添加它
+          messages.value.push(currentStreamingMessage.value)
+        } else {
+          // 更新现有消息的内容
+          messages.value[existingIndex] = { ...currentStreamingMessage.value }
+        }
+      }
+      // 完成后清理状态
+      isTyping.value = false
+      currentStreamingMessage.value = null
+      nextTick(() => scrollToBottom())
+      // 重新加载会话历史
+      loadAllSessions()
+      break
+
+    case 'assistant_message':
+      // 更新最终的助手消息
+      if (event.data && currentStreamingMessage.value) {
+        const finalMessage: EmergencyMessage = {
+          id: event.data.id,
+          role: 'assistant',
+          content: event.data.content,
+          steps: event.data.steps,
+          createdAt: event.data.created_at || event.data.createdAt,
+        }
+
+        // 替换临时消息
+        const index = messages.value.findIndex((m) => m.id === currentStreamingMessage.value?.id)
+        if (index !== -1) {
+          messages.value[index] = finalMessage
+        } else {
+          // 如果找不到临时消息，直接添加
+          messages.value.push(finalMessage)
+        }
+      }
+      break
+
+    case 'user_message':
+      // 更新用户消息ID（如果需要）
+      if (event.data) {
+        const lastUserMessage = messages.value[messages.value.length - 1]
+        if (lastUserMessage && lastUserMessage.role === 'user') {
+          lastUserMessage.id = event.data.id
+        }
+      }
+      break
+
+    case 'error':
+      showError(event.message || '发送消息失败')
+      break
+  }
+}
+
+// 处理流式错误
+const handleStreamError = (error: Error) => {
+  console.error('Stream error:', error)
+  showError('连接中断，请重试')
+  isTyping.value = false
+  currentStreamingMessage.value = null
+}
+
+// 处理流式完成
+const handleStreamComplete = () => {
+  // done事件已经处理了大部分逻辑，这里只做最后的清理
+  isTyping.value = false
+  if (currentStreamingMessage.value) {
+    currentStreamingMessage.value = null
+  }
+  nextTick(() => scrollToBottom())
+}
+
 const sendMessage = async () => {
   const content = messageInput.value.trim()
-  if (!content || isTyping.value || !selectedScenario.value || !currentSession.value) return
+  if (!content || isTyping.value || !selectedScenario.value) return
+
+  // 如果没有当前会话，先创建一个新会话
+  if (!currentSession.value) {
+    try {
+      const session = await emergencyApi.createSession(selectedScenario.value)
+      currentSession.value = session
+      // 重新加载会话历史
+      await loadAllSessions()
+    } catch (error) {
+      console.error('创建会话失败:', error)
+      showError('创建会话失败，请重试')
+      return
+    }
+  }
 
   // 添加用户消息
   const userMessage: EmergencyMessage = {
@@ -319,35 +591,35 @@ const sendMessage = async () => {
   // 清空输入
   messageInput.value = ''
 
-  // 发送消息到后端
+  // 滚动到底部
+  await nextTick()
+  scrollToBottom()
+
+  // 显示正在输入状态
   isTyping.value = true
+
   try {
-    const response = await emergencyApi.sendMessage(
+    // 创建临时的助手消息用于流式显示
+    currentStreamingMessage.value = {
+      id: `temp-${Date.now()}`,
+      role: 'assistant',
+      content: '',
+      createdAt: new Date().toISOString(),
+    }
+
+    // 发送流式消息
+    await emergencyApi.sendMessageStream(
       currentSession.value.id,
       content,
       selectedScenario.value,
+      handleStreamEvent,
+      handleStreamError,
+      handleStreamComplete,
     )
-
-    // 添加助手回复
-    messages.value.push(response.message)
   } catch (error) {
     console.error('发送消息失败:', error)
     showError('发送消息失败，请重试')
-  } finally {
     isTyping.value = false
-  }
-}
-
-// 加载历史消息
-const loadMessages = async () => {
-  if (!currentSession.value) return
-
-  try {
-    const historyMessages = await emergencyApi.getMessages(currentSession.value.id)
-    messages.value = historyMessages
-  } catch (error) {
-    console.error('加载历史消息失败:', error)
-    showError('加载历史消息失败')
   }
 }
 
@@ -377,49 +649,6 @@ const getLocation = () => {
   }
 }
 
-// 处理快速操作消息
-const handleQuickAction = async (action: string) => {
-  if (!selectedScenario.value || !currentSession.value) return
-
-  const userMessage: EmergencyMessage = {
-    id: Date.now(),
-    role: 'user',
-    content: action,
-    createdAt: new Date().toISOString(),
-  }
-  messages.value.push(userMessage)
-
-  isTyping.value = true
-  try {
-    const response = await emergencyApi.sendMessage(
-      currentSession.value.id,
-      action,
-      selectedScenario.value,
-    )
-    messages.value.push(response.message)
-  } catch (error) {
-    console.error('发送快速操作消息失败:', error)
-    showError('发送快速操作消息失败，请重试')
-  } finally {
-    isTyping.value = false
-  }
-}
-
-// 处理会话选择
-const handleSessionSelect = async (session: EmergencySession) => {
-  currentSession.value = session
-  selectedScenario.value = session.scenario
-  await loadMessages()
-}
-
-// 处理创建新会话
-const handleCreateSession = () => {
-  // 重置状态，让用户重新选择场景
-  selectedScenario.value = null
-  currentSession.value = null
-  messages.value = []
-}
-
 // 监听场景变化
 watch(
   () => selectedScenario.value,
@@ -429,6 +658,11 @@ watch(
     }
   },
 )
+
+// 页面挂载时加载会话历史
+onMounted(() => {
+  loadAllSessions()
+})
 </script>
 
 <style scoped>

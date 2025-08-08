@@ -12,14 +12,14 @@
   --el-color-primary-light-8: #eff6ff;
   --el-color-primary-light-9: #f8fafc;
   --el-color-primary-dark-2: #1d4ed8;
-  
+
   /* 功能色彩 */
-  --medical-red: #dc2626;      /* 紧急/危险 */
-  --medical-orange: #ea580c;   /* 警告 */
-  --medical-green: #059669;    /* 安全/正常 */
-  --medical-blue: #0284c7;     /* 信息/专业 */
-  --medical-purple: #7c3aed;   /* 特殊功能 */
-  
+  --medical-red: #dc2626; /* 紧急/危险 */
+  --medical-orange: #ea580c; /* 警告 */
+  --medical-green: #059669; /* 安全/正常 */
+  --medical-blue: #0284c7; /* 信息/专业 */
+  --medical-purple: #7c3aed; /* 特殊功能 */
+
   /* 中性色 */
   --medical-gray-50: #f9fafb;
   --medical-gray-100: #f3f4f6;
@@ -31,17 +31,17 @@
   --medical-gray-700: #374151;
   --medical-gray-800: #1f2937;
   --medical-gray-900: #111827;
-  
+
   /* 圆角规范 */
   --el-border-radius-base: 12px;
   --el-border-radius-small: 8px;
   --el-border-radius-large: 16px;
-  
+
   /* 阴影规范 */
   --medical-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
   --medical-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
   --medical-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
-  
+
   /* 移动端优化变量 */
   --mobile-padding: 16px;
   --mobile-gap: 12px;
@@ -107,7 +107,7 @@ body {
 }
 
 .medical-label-required::before {
-  content: "*";
+  content: '*';
   color: var(--medical-red);
   margin-right: 4px;
   font-weight: bold;
@@ -123,20 +123,22 @@ body {
 /* Element Plus 组件全局优化 */
 .el-input__inner {
   border-radius: var(--el-border-radius-small) !important;
-  border: 2px solid var(--medical-gray-200) !important;
+  border: none !important;
   transition: all 0.2s ease !important;
   font-size: 14px !important;
   height: 44px !important;
-  background-color: white !important;
+  background-color: var(--medical-gray-50) !important;
+  box-shadow: none !important;
 }
 
 .el-input__inner:focus {
-  border-color: var(--el-color-primary) !important;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
+  background-color: white !important;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1) !important;
 }
 
 .el-input__inner:hover {
-  border-color: var(--medical-gray-300) !important;
+  background-color: white !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
 }
 
 .el-select .el-input__inner {
@@ -145,20 +147,22 @@ body {
 
 .el-textarea__inner {
   border-radius: var(--el-border-radius-small) !important;
-  border: 2px solid var(--medical-gray-200) !important;
+  border: none !important;
   transition: all 0.2s ease !important;
   font-size: 14px !important;
   line-height: 1.6 !important;
-  background-color: white !important;
+  background-color: var(--medical-gray-50) !important;
+  box-shadow: none !important;
 }
 
 .el-textarea__inner:focus {
-  border-color: var(--el-color-primary) !important;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
+  background-color: white !important;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1) !important;
 }
 
 .el-textarea__inner:hover {
-  border-color: var(--medical-gray-300) !important;
+  background-color: white !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
 }
 
 /* 按钮样式系统 */
@@ -342,10 +346,12 @@ body {
 
 /* 专业渐变背景 */
 .medical-gradient-bg {
-  background: linear-gradient(135deg, 
-    var(--medical-gray-50) 0%, 
-    white 50%, 
-    var(--medical-gray-50) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--medical-gray-50) 0%,
+    white 50%,
+    var(--medical-gray-50) 100%
+  );
 }
 
 /* 状态指示器 */
@@ -357,10 +363,18 @@ body {
   margin-right: 8px;
 }
 
-.status-normal { background-color: var(--medical-green); }
-.status-warning { background-color: var(--medical-orange); }
-.status-danger { background-color: var(--medical-red); }
-.status-info { background-color: var(--medical-blue); }
+.status-normal {
+  background-color: var(--medical-green);
+}
+.status-warning {
+  background-color: var(--medical-orange);
+}
+.status-danger {
+  background-color: var(--medical-red);
+}
+.status-info {
+  background-color: var(--medical-blue);
+}
 
 /* 步骤指示器优化 */
 .el-steps {
@@ -398,19 +412,25 @@ body {
     margin-bottom: var(--mobile-padding);
     border-radius: 12px;
   }
-  
+
   /* 输入框优化 */
   .el-input__inner {
     height: 48px !important;
     font-size: 16px !important; /* 防止iOS缩放 */
     padding: 0 16px !important;
+    border: none !important;
+    background-color: var(--medical-gray-50) !important;
+    box-shadow: none !important;
   }
-  
+
   .el-textarea__inner {
     font-size: 16px !important; /* 防止iOS缩放 */
     padding: 12px 16px !important;
+    border: none !important;
+    background-color: var(--medical-gray-50) !important;
+    box-shadow: none !important;
   }
-  
+
   /* 按钮优化 */
   .el-button {
     height: 48px !important;
@@ -418,90 +438,90 @@ body {
     min-height: 48px;
     padding: 0 20px !important;
   }
-  
+
   .el-button--large {
     height: 52px !important;
     font-size: 17px !important;
     min-height: 52px;
     padding: 0 24px !important;
   }
-  
+
   .el-button--small {
     height: 40px !important;
     font-size: 14px !important;
     min-height: 40px;
   }
-  
+
   /* 选择器优化 */
   .el-select .el-input__inner {
     height: 48px !important;
     line-height: 48px !important;
   }
-  
+
   /* 滑块优化 */
   .el-slider__runway {
     height: 12px !important;
   }
-  
+
   .el-slider__button {
     width: 24px !important;
     height: 24px !important;
   }
-  
+
   /* 标签优化 */
   .el-tag {
     padding: 8px 12px !important;
     font-size: 14px !important;
     margin: 4px !important;
   }
-  
+
   /* 步骤组件优化 */
   .el-steps {
     margin-bottom: 16px;
   }
-  
+
   .el-step__title {
     font-size: 14px !important;
   }
-  
+
   .el-step__description {
     font-size: 12px !important;
   }
-  
+
   /* 对话框优化 */
   .el-dialog {
     width: 95% !important;
     margin: 20px auto !important;
   }
-  
+
   .el-drawer {
     width: 100% !important;
   }
-  
+
   /* 栅格系统优化 */
   .grid {
     gap: var(--mobile-gap) !important;
   }
-  
+
   /* 文字大小优化 */
   .medical-card-title {
     font-size: 16px;
   }
-  
+
   .medical-label {
     font-size: 15px;
     margin-bottom: 6px;
   }
-  
+
   /* 间距优化 */
   .space-y-6 > * + * {
     margin-top: 16px !important;
   }
-  
+
   .space-y-4 > * + * {
     margin-top: 12px !important;
   }
-  
+
   /* 容器优化 */
   .container {
     padding-left: var(--mobile-padding);
@@ -514,12 +534,12 @@ body {
   .medical-card {
     padding: 20px;
   }
-  
+
   .el-input__inner,
   .el-textarea__inner {
     font-size: 15px !important;
   }
-  
+
   .el-button {
     font-size: 15px !important;
   }
@@ -530,7 +550,7 @@ body {
   .medical-card {
     padding: 28px;
   }
-  
+
   .container {
     max-width: 1280px;
   }
@@ -542,11 +562,11 @@ body {
   .el-textarea__inner {
     border-width: 3px !important;
   }
-  
+
   .el-button {
     border-width: 3px !important;
   }
-  
+
   .medical-card {
     border-width: 2px;
   }
@@ -579,11 +599,11 @@ body {
     border: 2px solid var(--medical-gray-300);
     break-inside: avoid;
   }
-  
+
   .el-button {
     display: none;
   }
-  
+
   .medical-gradient-bg {
     background: white;
   }
@@ -602,12 +622,12 @@ body {
   .el-button:hover {
     transform: none;
   }
-  
+
   .medical-card:hover {
     transform: none;
     box-shadow: var(--medical-shadow-sm);
   }
-  
+
   /* 增大点击区域 */
   .el-collapse-item__header {
     padding: 16px !important;

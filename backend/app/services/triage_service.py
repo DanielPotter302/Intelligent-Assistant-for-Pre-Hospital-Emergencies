@@ -47,7 +47,7 @@ class TriageService:
         
         try:
             # 使用分诊模式进行流式AI分析
-            async for chunk in ai_service.chat_completion_stream(ai_messages, mode="triage", temperature=0.3):
+            async for chunk in ai_service.stream_chat_completion(ai_messages, mode="triage", temperature=0.3):
                 yield chunk
         except Exception as e:
             # 如果AI分析失败，返回错误信息

@@ -32,10 +32,20 @@
           <el-button type="primary" disabled>即将开放</el-button>
         </div>
 
-        <!-- 系统设置 -->
+        <!-- LLM配置管理 -->
         <div class="admin-card">
           <div class="card-icon">
             <el-icon size="32"><Setting /></el-icon>
+          </div>
+          <h3>LLM配置管理</h3>
+          <p>管理大语言模型的API KEY和配置参数</p>
+          <el-button type="primary" @click="showLLMConfigManager = true">配置管理</el-button>
+        </div>
+
+        <!-- 系统设置 -->
+        <div class="admin-card">
+          <div class="card-icon">
+            <el-icon size="32"><Tools /></el-icon>
           </div>
           <h3>系统设置</h3>
           <p>配置系统参数和功能选项</p>
@@ -59,17 +69,22 @@
 
     <!-- 知识库管理对话框 -->
     <KnowledgeManager v-model="showKnowledgeManager" />
+
+    <!-- LLM配置管理对话框 -->
+    <LLMConfigManager v-model="showLLMConfigManager" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { User, Setting, DataAnalysis, Message, Document } from '@element-plus/icons-vue'
+import { User, Setting, DataAnalysis, Message, Document, Tools } from '@element-plus/icons-vue'
 import MessageManager from '@/components/admin/MessageManager.vue'
 import KnowledgeManager from '@/components/admin/KnowledgeManager.vue'
+import LLMConfigManager from '@/components/admin/LLMConfigManager.vue'
 
 const showMessageManager = ref(false)
 const showKnowledgeManager = ref(false)
+const showLLMConfigManager = ref(false)
 </script>
 
 <style scoped>

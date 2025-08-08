@@ -174,7 +174,7 @@ def init_book_links(db: Session):
             "title": "实用院前急救手册",
             "author": "急救医学专家团队",
             "description": "实用的院前急救操作手册，包含各种急救技能和操作要点",
-            "cover_url": "/picture/实用院前急救手册.jpg",
+            "cover_url": "/uploads/books/实用院前急救手册.jpg",
             "book_url": "https://pan.baidu.com/s/1example1",
             "sort_order": 1
         },
@@ -182,7 +182,7 @@ def init_book_links(db: Session):
             "title": "新编院前急救手册",
             "author": "急救医学专家团队",
             "description": "新版院前急救手册，更新了最新的急救技术和操作规范",
-            "cover_url": "/picture/新编院前急救手册.jpg",
+            "cover_url": "/uploads/books/新编院前急救手册.jpg",
             "book_url": "https://pan.baidu.com/s/1example2",
             "sort_order": 2
         }
@@ -207,7 +207,7 @@ def main():
     print("开始初始化知识库...")
     
     # 检查文件是否存在
-    file_path = "../classified_grouped_aggregated.txt"
+    file_path = "classified_grouped_aggregated.txt"
     if not os.path.exists(file_path):
         print(f"错误: 找不到文件 {file_path}")
         sys.exit(1)

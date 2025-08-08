@@ -66,7 +66,7 @@
                 :page-sizes="[10, 20, 50, 100]"
                 layout="total, sizes, prev, pager, next, jumper"
                 @size-change="
-                  (size) => {
+                  (size: number) => {
                     pageSize = size
                     currentPage = 1
                     loadContentItems()
